@@ -79,7 +79,7 @@ async fn read_packets(
             tcp_packet.to_header().destination_port,
         );
         // trace!(
-        //     "{} ({}) => {:?}",
+        //     "{} ({}) => {:02X?}",
         //     curr_server,
         //     tcp_packet.payload().len(),
         //     tcp_packet.payload(),

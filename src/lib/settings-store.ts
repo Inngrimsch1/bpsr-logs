@@ -10,6 +10,8 @@ const DEFAULT_SETTINGS = {
     showYourAbilityScore: true,
     showOthersAbilityScore: true,
     relativeToTop: false,
+    alternateNameDisplay: false,
+    shortenAbilityScore: false, 
   },
   accessibility: {
     blur: !IS_WIN_11,

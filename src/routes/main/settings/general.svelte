@@ -16,4 +16,6 @@
   <SettingsSwitch bind:checked={GENERAL_SETTINGS["showYourAbilityScore"]} label="Your Ability Score" description="Show your ability score" />
   <SettingsSwitch bind:checked={GENERAL_SETTINGS["showOthersAbilityScore"]} label="Others' Ability Score" description="Show others' ability score" />
   <SettingsSwitch bind:checked={GENERAL_SETTINGS["relativeToTop"]} label="Relative to Top" description="Color bars are relative to top DPS (Heal, etc.) instead of whole encounter. Useful for 20 man or World Bosses." />
+  <SettingsSwitch bind:checked={GENERAL_SETTINGS["alternateNameDisplay"]} label="Alternate Name Display" description="Alternate name Display -> Name (Ability Score)" />
+  <SettingsSwitch bind:checked={GENERAL_SETTINGS["shortenAbilityScore"]} label="Shorten Ability Score" description="Shortens the Ability Score" />
 </Tabs.Content>
