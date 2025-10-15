@@ -3,6 +3,7 @@
   import { copyToClipboard, getClassIcon, tooltip } from "$lib/utils.svelte";
   import AbbreviatedNumber from "./abbreviated-number.svelte";
   import { shortenAbilityScore } from "$lib/utils.svelte";
+  
   let {
     className = "",
     classSpecName = "",
