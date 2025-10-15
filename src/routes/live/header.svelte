@@ -20,7 +20,6 @@
   onMount(() => {
     fetchData();
     const interval = setInterval(fetchData, 200);
-
     return () => clearInterval(interval);
   });
 
@@ -47,14 +46,23 @@
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
-  let headerInfo: HeaderInfo = $state({ totalDps: 0, totalDmg: 0, elapsedMs: 0 });
+  let headerInfo: HeaderInfo = $state({
+    totalDps: 0,
+    totalDmg: 0,
+    elapsedMs: 0,
+  });
   let isEncounterPaused = $state(false);
-  const { screenshotDiv }: { screenshotDiv?: HTMLElement } = $props();
+  const {
+    screenshotDiv,
+  }: {
+    screenshotDiv?: HTMLElement;
+  } = $props();
   const appWindow = getCurrentWebviewWindow();
 
   async function openSettings() {
     const mainWindow = await WebviewWindow.getByLabel("main");
     if (mainWindow) {
+      await mainWindow?.unminimize();
       await mainWindow?.show();
       await emitTo("main", "navigate", "/main/settings");
     }
@@ -65,7 +73,13 @@
 <header data-tauri-drag-region class="sticky top-0 flex h-7 w-full items-center justify-between bg-neutral-900/80 px-1">
   <!-- Left side -->
   <span>
-    <button onclick={() => commands.hardReset()} {@attach tooltip(() => "Temp Fix: Hard Reset")}><RefreshCwIcon /></button>
+    <button
+      onclick={() => {
+        commands.hardReset();
+        window.location.reload();
+      }}
+      {@attach tooltip(() => "Temp Fix: Hard Reset")}><RefreshCwIcon /></button
+    >
     <span {@attach tooltip(() => "Time Elapsed")}>{formatElapsed(headerInfo.elapsedMs)}</span>
     <span><span {@attach tooltip(() => "Total Damage Dealt")}>T.DMG</span> <span {@attach tooltip(() => headerInfo.totalDmg.toLocaleString())}><AbbreviatedNumber num={Number(headerInfo.totalDmg)} /></span></span>
     <span><span {@attach tooltip(() => "Total Damage per Second")}>T.DPS</span> <span {@attach tooltip(() => headerInfo.totalDps.toLocaleString())}><AbbreviatedNumber num={headerInfo.totalDps} /></span></span>
@@ -94,7 +108,13 @@
     >
       <CameraIcon />
     </button>
-    <button onclick={() => commands.resetEncounter()} {@attach tooltip(() => "Reset Encounter")}><TimerResetIcon /></button>
+    <button
+      onclick={async () => {
+        commands.resetEncounter();
+        window.location.reload(); // TODO: temp fix
+      }}
+      {@attach tooltip(() => "Reset Encounter")}><TimerResetIcon /></button
+    >
     <button
       onclick={() => {
         commands.togglePauseEncounter();
