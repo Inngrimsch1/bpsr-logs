@@ -7,7 +7,7 @@
   import { createSvelteTable } from "$lib/svelte-table";
   import { healPlayersColumnDefs } from "$lib/table-info";
   import FlexRender from "$lib/svelte-table/flex-render.svelte";
-  import { settings } from "$lib/settings-store";
+  import { SETTINGS } from "$lib/settings-store";
 
   onMount(() => {
     fetchData();
@@ -20,9 +20,9 @@
 
   async function fetchData() {
     try {
-      const result = await commands.getHealPlayerWindow();
+      const result = SETTINGS.misc.state.testingMode ? await commands.getTestPlayerWindow() : await commands.getHealPlayerWindow();
       if (result.status !== "ok") {
-        console.warn("timestamp: ", +Date.now(), " Failed to get heal window: ", +Date.now(),  result.error);
+        console.warn("timestamp: ", +Date.now(), " Failed to get heal window: ", +Date.now(), result.error);
         return;
       } else {
         healPlayersWindow = result.data;
@@ -41,15 +41,15 @@
     getCoreRowModel: getCoreRowModel(),
     state: {
       get columnVisibility() {
-        return settings.state["live"]["heal"]["players"];
+        return SETTINGS.live.heal.players.state;
       },
     },
   });
 
   let maxHeal = $derived(healPlayersWindow.playerRows.reduce((max, p) => (p.totalDmg > max ? p.totalDmg : max), 0));
 
-  let SETTINGS_YOUR_NAME = $derived(settings.state["general"]["showYourName"]);
-  let SETTINGS_OTHERS_NAME = $derived(settings.state["general"]["showOthersName"]);
+  let SETTINGS_YOUR_NAME = $derived(SETTINGS.general.state.showYourName);
+  let SETTINGS_OTHERS_NAME = $derived(SETTINGS.general.state.showOthersName);
 </script>
 
 <div class="relative flex flex-col">
@@ -68,9 +68,9 @@
         {@const className = row.original.name.includes("You") ? (SETTINGS_YOUR_NAME !== "Hide Your Name" ? row.original.className : "") : SETTINGS_OTHERS_NAME !== "Hide Others' Name" ? row.original.className : ""}
         <tr class="h-7 px-2 py-1 text-center" onclick={() => goto(`/live/heal/skills?playerUid=${row.original.uid}`)}>
           {#each row.getVisibleCells() as cell (cell.id)}
-            <td><FlexRender content={cell.column.columnDef.cell ?? "UNKNOWN CELL"} context={cell.getContext()} /></td>
+            <td class="text-right"><FlexRender content={cell.column.columnDef.cell ?? "UNKNOWN CELL"} context={cell.getContext()} /></td>
           {/each}
-          <td class="-z-1 absolute left-0 h-7" style="background-color: {getClassColor(className)}; width: {settings.state.general.relativeToTop ? maxDamage > 0 ? (row.original.totalDmg / maxDamage) * 100 : 0 :  row.original.dmgPct}%;"></td>
+          <td class="-z-1 absolute left-0 h-7" style="background-color: {getClassColor(className)}; width: {SETTINGS.general.state.relativeToTopHealPlayer ? (maxHeal > 0 ? (row.original.totalDmg / maxHeal) * 100 : 0) : row.original.dmgPct}%;"></td>
         </tr>
       {/each}
     </tbody>

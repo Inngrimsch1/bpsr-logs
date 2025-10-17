@@ -6,7 +6,7 @@
   import { createSvelteTable, FlexRender } from "$lib/svelte-table";
   import { dpsPlayersColumnDefs, dpsSkillsColumnDefs } from "$lib/table-info";
   import { getCoreRowModel } from "@tanstack/table-core";
-  import { settings } from "$lib/settings-store";
+  import { SETTINGS } from "$lib/settings-store";
 
   const playerUid: string = page.url.searchParams.get("playerUid") ?? "-1";
 
@@ -20,7 +20,7 @@
 
   async function fetchData() {
     try {
-      const result = await commands.getDpsSkillWindow(playerUid);
+      const result = SETTINGS.misc.state.testingMode ? await commands.getTestSkillWindow(playerUid) : await commands.getDpsSkillWindow(playerUid);
       if (result.status !== "ok") {
         console.warn("Failed to get skill window: ", result.error);
         return;
@@ -41,7 +41,7 @@
     getCoreRowModel: getCoreRowModel(),
     state: {
       get columnVisibility() {
-        return settings.state["live"]["dps"]["skillBreakdown"];
+        return SETTINGS.live.dps.skillBreakdown.state;
       },
     },
   });
@@ -54,15 +54,15 @@
     getCoreRowModel: getCoreRowModel(),
     state: {
       get columnVisibility() {
-        return settings.state["live"]["dps"]["skillBreakdown"];
+        return SETTINGS.live.dps.skillBreakdown.state;
       },
     },
   });
 
-  let maxSkillValue = $derived(dpsSkillBreakdownWindow.skillRows.reduce((max, p) => (p.totalDmg > max ? p.totalDmg : max), 0n));
+  let maxSkillValue = $derived(dpsSkillBreakdownWindow.skillRows.reduce((max, p) => (p.totalDmg > max ? p.totalDmg : max), 0));
 
-  let SETTINGS_YOUR_NAME = $derived(settings.state["general"]["showYourName"]);
-  let SETTINGS_OTHERS_NAME = $derived(settings.state["general"]["showOthersName"]);
+  let SETTINGS_YOUR_NAME = $derived(SETTINGS.general.state.showYourName);
+  let SETTINGS_OTHERS_NAME = $derived(SETTINGS.general.state.showOthersName);
 </script>
 
 <svelte:window oncontextmenu={() => window.history.back()} />
@@ -100,7 +100,7 @@
             {#each row.getVisibleCells() as cell (cell.id)}
               <td><FlexRender content={cell.column.columnDef.cell ?? "UNKNOWN CELL"} context={cell.getContext()} /></td>
             {/each}
-            <td class="-z-1 absolute left-0 h-7" style="background-color: {`color-mix(in srgb, ${getClassColor(className)} 80%, white ${i % 2 === 0 ? '50%' : '20%'})`}; width: {maxSkillValue > 0n ? (Number(row.original.totalDmg) / Number(maxSkillValue)) * 100 : 0}%;"></td>
+            <td class="-z-1 absolute left-0 h-7" style="background-color: {`color-mix(in srgb, ${getClassColor(className)} 80%, white ${i % 2 === 0 ? '50%' : '20%'})`}; width: {SETTINGS.general.state.relativeToTopDPSSkill ? (maxSkillValue > 0 ? (row.original.totalDmg / maxSkillValue) * 100 : 0) : row.original.dmgPct}%;"></td>
           </tr>
         {/if}
       {/each}

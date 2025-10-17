@@ -15,7 +15,7 @@
   import { takeScreenshot, tooltip } from "$lib/utils.svelte";
   import AbbreviatedNumber from "$lib/components/abbreviated-number.svelte";
   import { emitTo } from "@tauri-apps/api/event";
-  import { settings } from "$lib/settings-store";
+  import { SETTINGS } from "$lib/settings-store";
 
   onMount(() => {
     fetchData();
@@ -23,7 +23,14 @@
     return () => clearInterval(interval);
   });
 
+  let hasReset = false;
+
   async function fetchData() {
+    if (SETTINGS.general.state.resetElapsed && !hasReset && Date.now() - headerInfo.timeLastCombatPacketMs > SETTINGS.general.state.resetElapsed * 1000) {
+      hasReset = true;
+      console.log(`Resetting as ${SETTINGS.general.state.resetElapsed}s has passed.`);
+      commands.hardReset(); // TODO: this is temporary, switch to resetEncounter once bug is fixed.
+    }
     try {
       const result = await commands.getHeaderInfo();
       if (result.status !== "ok") {
@@ -32,6 +39,11 @@
       } else {
         headerInfo = result.data;
         // console.log("header: ", +Date.now(), $state.snapshot(headerInfo));
+        if (hasReset) {
+          hasReset = false;
+          window.location.reload();
+          console.log("Fresh packet");
+        }
       }
     } catch (e) {
       console.error("Error fetching data: ", e);
@@ -61,9 +73,10 @@
 
   async function openSettings() {
     const mainWindow = await WebviewWindow.getByLabel("main");
-    if (mainWindow) {
+    if (mainWindow !== null) {
       await mainWindow?.unminimize();
       await mainWindow?.show();
+      await mainWindow?.setFocus();
       await emitTo("main", "navigate", "/main/settings");
     }
   }
@@ -89,9 +102,9 @@
     <!-- TODO: add responsive clicks, toaster -->
     <button
       onclick={async () => {
-        const prev = settings.state.general.showOthersName;
-        if (settings.state.general.showOthersName === "Show Others' Name") {
-          settings.state.general.showOthersName = "Show Others' Class";
+        const prev = SETTINGS.general.state.showOthersName;
+        if (SETTINGS.general.state.showOthersName === "Show Others' Name") {
+          SETTINGS.general.state.showOthersName = "Show Others' Class";
         }
 
         // Wait for reactive flush & paint
@@ -101,7 +114,7 @@
         await takeScreenshot(screenshotDiv);
 
         // Revert & let UI update
-        settings.state.general.showOthersName = prev;
+        SETTINGS.general.state.showOthersName = prev;
         await tick();
       }}
       {@attach tooltip(() => "Screenshot to Clipboard")}

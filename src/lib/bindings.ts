@@ -62,6 +62,22 @@ async togglePauseEncounter() : Promise<void> {
 },
 async hardReset() : Promise<void> {
     await TAURI_INVOKE("hard_reset");
+},
+async getTestPlayerWindow() : Promise<Result<PlayersWindow, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_test_player_window") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getTestSkillWindow(playerUid: string) : Promise<Result<SkillsWindow, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_test_skill_window", { playerUid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -75,7 +91,7 @@ async hardReset() : Promise<void> {
 
 /** user-defined types **/
 
-export type HeaderInfo = { totalDps: number; totalDmg: number; elapsedMs: number }
+export type HeaderInfo = { totalDps: number; totalDmg: number; elapsedMs: number; timeLastCombatPacketMs: number }
 export type PlayerRow = { uid: number; name: string; className: string; classSpecName: string; abilityScore: number; totalDmg: number; dps: number; dmgPct: number; critRate: number; critDmgRate: number; luckyRate: number; luckyDmgRate: number; hits: number; hitsPerMinute: number }
 export type PlayersWindow = { playerRows: PlayerRow[] }
 export type SkillRow = { name: string; totalDmg: number; dps: number; dmgPct: number; critRate: number; critDmgRate: number; luckyRate: number; luckyDmgRate: number; hits: number; hitsPerMinute: number }
