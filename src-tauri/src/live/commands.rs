@@ -2,8 +2,9 @@ use crate::WINDOW_LIVE_LABEL;
 use crate::live::commands_models::{
     HeaderInfo, PlayerRow, PlayerRows, PlayersWindow, SkillRow, SkillsWindow,
 };
-use crate::live::opcodes_models::{Encounter, EncounterMutex, Skill, class};
+use crate::live::opcodes_models::{EncounterMutex, Skill, class};
 use crate::packets::packet_capture::request_restart;
+use crate::live::utils::reset_combat_data;
 use blueprotobuf_lib::blueprotobuf::EEntityType;
 use log::info;
 use tauri::Manager;
@@ -14,7 +15,7 @@ fn prettify_name(player_uid: i64, local_player_uid: i64, player_name: &String) -
     if player_uid == local_player_uid && player_name.is_empty() {
         String::from("You")
     } else if player_uid == local_player_uid && !player_name.is_empty() {
-        format!("{player_name} (You)")
+        format!("{player_name}")
     } else {
         player_name.clone()
     }
@@ -90,17 +91,15 @@ pub fn get_header_info(state: tauri::State<'_, EncounterMutex>) -> Result<Header
 #[tauri::command]
 #[specta::specta]
 pub fn hard_reset(state: tauri::State<'_, EncounterMutex>) {
-    let mut encounter = state.lock().unwrap();
-    encounter.clone_from(&Encounter::default());
-    request_restart();
+    reset_combat_data(state);
+    //request_restart();
     info!("Hard Reset");
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn reset_encounter(state: tauri::State<'_, EncounterMutex>) {
-    let mut encounter = state.lock().unwrap();
-    encounter.clone_from(&Encounter::default());
+    reset_combat_data(state);
 
     info!("encounter reset");
 }
@@ -139,16 +138,17 @@ pub fn get_dps_player_window(
         // calculate things like dps
         let is_player = entity.entity_type == EEntityType::EntChar;
         let did_damage = !entity.skill_uid_to_dmg_skill.is_empty();
-        // info!("{}, {is_player}", entity.name);
+
+        let _entity = encounter.entity_uid_to_player_entity.get(&entity_uid).ok_or_else(|| format!("Entity not found for player_uid {entity_uid}"))?;
         if is_player && did_damage {
             // Damage Stats per player
             #[allow(clippy::cast_precision_loss)]
             let damage_row = PlayerRow {
                 uid: entity_uid as f64,
-                name: prettify_name(entity_uid, encounter.local_player_uid, &entity.name),
-                class_name: class::get_class_name(entity.class_id),
-                class_spec_name: class::get_class_spec(entity.class_spec),
-                ability_score: entity.ability_score as f64,
+                name: prettify_name(entity_uid, encounter.local_player_uid, &_entity.name),
+                class_name: class::get_class_name(_entity.class_id),
+                class_spec_name: class::get_class_spec(_entity.class_spec),
+                ability_score: _entity.ability_score as f64,
                 total_dmg: entity.total_dmg as f64,
                 dps: nan_is_zero(entity.total_dmg as f64 / time_elapsed_secs),
                 dmg_pct: nan_is_zero(entity.total_dmg as f64 / encounter.total_dmg as f64 * 100.0),
@@ -212,15 +212,17 @@ pub fn get_dps_player_window_boss(
         let is_player = entity.entity_type == EEntityType::EntChar;
         let did_damage = !entity.skill_uid_to_dmg_skill.is_empty();
         // info!("{}, {is_player}", entity.name);
+        let _entity = encounter.entity_uid_to_player_entity.get(&entity_uid).ok_or_else(|| format!("Entity not found for player_uid {entity_uid}"))?;
+
         if is_player && did_damage {
             // Damage Stats per player
             #[allow(clippy::cast_precision_loss)]
             let damage_row = PlayerRow {
                 uid: entity_uid as f64,
-                name: prettify_name(entity_uid, encounter.local_player_uid, &entity.name),
-                class_name: class::get_class_name(entity.class_id),
-                class_spec_name: class::get_class_spec(entity.class_spec),
-                ability_score: entity.ability_score as f64,
+                name: prettify_name(entity_uid, encounter.local_player_uid, &_entity.name),
+                class_name: class::get_class_name(_entity.class_id),
+                class_spec_name: class::get_class_spec(_entity.class_spec),
+                ability_score: _entity.ability_score as f64,
                 total_dmg: entity.total_dmg_boss as f64,
                 dps: nan_is_zero(entity.total_dmg_boss as f64 / time_elapsed_secs),
                 dmg_pct: nan_is_zero(entity.total_dmg_boss as f64 / encounter.total_dmg_boss as f64 * 100.0),
@@ -270,6 +272,8 @@ pub fn get_dps_skill_window(
         .get(&player_uid)
         .ok_or_else(|| format!("Entity not found for player_uid {player_uid}"))?;
 
+    let _entity = encounter.entity_uid_to_player_entity.get(&player_uid).ok_or_else(|| format!("Entity not found for player_uid {player_uid}"))?;
+
     let time_elapsed_ms = encounter
         .time_last_combat_packet_ms
         .saturating_sub(encounter.time_fight_start_ms);
@@ -281,10 +285,10 @@ pub fn get_dps_skill_window(
     let mut skill_window = SkillsWindow {
         curr_player: vec![PlayerRow {
             uid: player_uid as f64,
-            name: prettify_name(player_uid, encounter.local_player_uid, &entity.name),
-            class_name: class::get_class_name(entity.class_id),
-            class_spec_name: class::get_class_spec(entity.class_spec),
-            ability_score: entity.ability_score as f64,
+            name: prettify_name(player_uid, encounter.local_player_uid, &_entity.name),
+            class_name: class::get_class_name(_entity.class_id),
+            class_spec_name: class::get_class_spec(_entity.class_spec),
+            ability_score: _entity.ability_score as f64,
             total_dmg: entity.total_dmg as f64,
             dps: nan_is_zero(entity.total_dmg as f64 / time_elapsed_secs),
             dmg_pct: nan_is_zero(entity.total_dmg as f64 / encounter.total_dmg as f64 * 100.0),
@@ -360,16 +364,17 @@ pub fn get_dps_skill_window_boss(
         .saturating_sub(encounter.time_fight_start_ms_boss);
     #[allow(clippy::cast_precision_loss)]
     let time_elapsed_secs = time_elapsed_ms as f64 / 1000.0;
+    let _entity = encounter.entity_uid_to_player_entity.get(&player_uid).ok_or_else(|| format!("Entity not found for player_uid {player_uid}"))?;
 
     // Player DPS Stats
     #[allow(clippy::cast_precision_loss)]
     let mut skill_window = SkillsWindow {
         curr_player: vec![PlayerRow {
             uid: player_uid as f64,
-            name: prettify_name(player_uid, encounter.local_player_uid, &entity.name),
-            class_name: class::get_class_name(entity.class_id),
-            class_spec_name: class::get_class_spec(entity.class_spec),
-            ability_score: entity.ability_score as f64,
+            name: prettify_name(player_uid, encounter.local_player_uid, &_entity.name),
+            class_name: class::get_class_name(_entity.class_id),
+            class_spec_name: class::get_class_spec(_entity.class_spec),
+            ability_score: _entity.ability_score as f64,
             total_dmg: entity.total_dmg_boss as f64,
             dps: nan_is_zero(entity.total_dmg_boss as f64 / time_elapsed_secs),
             dmg_pct: nan_is_zero(entity.total_dmg_boss as f64 / encounter.total_dmg_boss as f64 * 100.0),
@@ -454,15 +459,17 @@ pub fn get_heal_player_window(
         let is_player = entity.entity_type == EEntityType::EntChar;
         let did_damage = !entity.skill_uid_to_heal_skill.is_empty();
         // info!("{}, {is_player}", entity.name);
+        let _entity = encounter.entity_uid_to_player_entity.get(&entity_uid).ok_or_else(|| format!("Entity not found for player_uid {entity_uid}"))?;
+
         if is_player && did_damage {
             // Damage Stats per player
             #[allow(clippy::cast_precision_loss)]
             let damage_row = PlayerRow {
                 uid: entity_uid as f64,
-                name: prettify_name(entity_uid, encounter.local_player_uid, &entity.name),
-                class_name: class::get_class_name(entity.class_id),
-                class_spec_name: class::get_class_spec(entity.class_spec),
-                ability_score: entity.ability_score as f64,
+                name: prettify_name(entity_uid, encounter.local_player_uid, &_entity.name),
+                class_name: class::get_class_name(_entity.class_id),
+                class_spec_name: class::get_class_spec(_entity.class_spec),
+                ability_score: _entity.ability_score as f64,
                 total_dmg: entity.total_heal as f64,
                 dps: nan_is_zero(entity.total_heal as f64 / time_elapsed_secs),
                 dmg_pct: nan_is_zero(
@@ -513,22 +520,23 @@ pub fn get_heal_skill_window(
         .entity_uid_to_entity
         .get(&player_uid)
         .ok_or_else(|| format!("Entity not found for player_uid {player_uid}"))?;
-
+    
     let time_elapsed_ms = encounter
         .time_last_combat_packet_ms
         .saturating_sub(encounter.time_fight_start_ms);
     #[allow(clippy::cast_precision_loss)]
     let time_elapsed_secs = time_elapsed_ms as f64 / 1000.0;
+    let _entity = encounter.entity_uid_to_player_entity.get(&player_uid).ok_or_else(|| format!("Entity not found for player_uid {player_uid}"))?;
 
     // Player DPS Stats
     #[allow(clippy::cast_precision_loss)]
     let mut skill_window = SkillsWindow {
         curr_player: vec![PlayerRow {
             uid: player_uid as f64,
-            name: prettify_name(player_uid, encounter.local_player_uid, &entity.name),
-            class_name: class::get_class_name(entity.class_id),
-            class_spec_name: class::get_class_spec(entity.class_spec),
-            ability_score: entity.ability_score as f64,
+            name: prettify_name(player_uid, encounter.local_player_uid, &_entity.name),
+            class_name: class::get_class_name(_entity.class_id),
+            class_spec_name: class::get_class_spec(_entity.class_spec),
+            ability_score: _entity.ability_score as f64,
             total_dmg: entity.total_heal as f64,
             dps: nan_is_zero(entity.total_heal as f64 / time_elapsed_secs),
             dmg_pct: nan_is_zero(entity.total_heal as f64 / encounter.total_heal as f64 * 100.0),

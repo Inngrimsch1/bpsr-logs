@@ -3,7 +3,7 @@ use crate::live::opcodes_models::class::{
 };
 use crate::live::utils::{is_boss};
 use crate::live::opcodes_models::{
-    attr_type, Encounter, Entity, Skill, MONSTER_NAMES, MONSTER_NAMES_CROWDSOURCE,
+    Encounter, Entity, MONSTER_NAMES, MONSTER_NAMES_CROWDSOURCE, PlayerEntity, Skill, attr_type
 };
 use crate::packets::utils::BinaryReader;
 use blueprotobuf_lib::blueprotobuf;
@@ -32,9 +32,14 @@ pub fn process_sync_near_entities(
             .entry(target_uid)
             .or_default();
         target_entity.entity_type = target_entity_type;
-
+        
+        let _target_entity = encounter
+            .entity_uid_to_player_entity
+            .entry(target_uid)
+            .or_default();
+        _target_entity.entity_type = target_entity_type;
         match target_entity_type {
-            EEntityType::EntChar => process_player_attrs(target_entity, target_uid, pkt_entity.attrs?.attrs),
+            EEntityType::EntChar => process_player_attrs(target_entity, target_uid, pkt_entity.attrs?.attrs, _target_entity),
             EEntityType::EntMonster => process_monster_attrs(target_entity, pkt_entity.attrs?.attrs, &encounter.local_player, is_bptimer_enabled),
             _ => {}
         }
@@ -53,12 +58,21 @@ pub fn process_sync_container_data(
         .entity_uid_to_entity
         .entry(player_uid)
         .or_default();
+    let _target_entity = encounter
+        .entity_uid_to_player_entity
+        .entry(player_uid)
+        .or_default();
     let char_base = v_data.char_base?;
     target_entity.name = char_base.name?;
     target_entity.entity_type = EEntityType::EntChar;
     target_entity.class_id = v_data.profession_list?.cur_profession_id?;
     target_entity.ability_score = char_base.fight_point?;
     target_entity.level = v_data.role_level?.level?;
+    _target_entity.name = target_entity.name.clone();
+    _target_entity.entity_type = EEntityType::EntChar;
+    _target_entity.class_id = target_entity.class_id.clone();
+    _target_entity.ability_score = char_base.fight_point?;
+    _target_entity.level = target_entity.level.clone();
 
     Some(())
 }
@@ -98,10 +112,17 @@ pub fn process_aoi_sync_delta(
             entity_type: target_entity_type,
             ..Default::default()
         });
+    let mut _target_entity = encounter
+        .entity_uid_to_player_entity
+        .entry(target_uid)
+        .or_insert_with(|| PlayerEntity {
+            entity_type: target_entity_type,
+            ..Default::default()
+        });
 
     if let Some(attrs_collection) = aoi_sync_delta.attrs {
         match target_entity_type {
-            EEntityType::EntChar => process_player_attrs(&mut target_entity, target_uid, attrs_collection.attrs),
+            EEntityType::EntChar => process_player_attrs(&mut target_entity, target_uid, attrs_collection.attrs, &mut _target_entity),
             EEntityType::EntMonster => process_monster_attrs(&mut target_entity, attrs_collection.attrs, &encounter.local_player, is_bptimer_enabled),
             _ => {}
         }
@@ -136,16 +157,35 @@ pub fn process_aoi_sync_delta(
                 ..Default::default()
             });
 
+        let _attacker_entity = encounter
+            .entity_uid_to_player_entity
+            .entry(attacker_uid)
+            .or_insert_with(|| PlayerEntity {
+                // name: format!("dummy-name-{attacker_uid}"),
+                entity_type: EEntityType::from(attacker_uuid),
+                ..Default::default()
+            });    
+
         // Skills
         let skill_uid = sync_damage_info.owner_id?;
-        if attacker_entity.class_spec == ClassSpec::Unknown {
+
+        if _attacker_entity.class_spec == ClassSpec::Unknown {
             let class_spec = get_class_spec_from_skill_id(skill_uid);
-            attacker_entity.class_id = get_class_id_from_spec(class_spec);
-            attacker_entity.class_spec = class_spec;
+            _attacker_entity.class_id = get_class_id_from_spec(class_spec);
+            _attacker_entity.class_spec = class_spec;
+        }
+
+        if attacker_entity.class_spec == ClassSpec::Unknown {
+            attacker_entity.class_id = _attacker_entity.class_id;
+            attacker_entity.class_spec = _attacker_entity.class_spec;
         }
 
         let is_heal = sync_damage_info.r#type.unwrap_or(0) == EDamageType::Heal as i32;
-        if is_heal {
+        if !is_heal && actual_value > 0 {
+            encounter.fight_start = true;
+        }            
+
+        if is_heal && encounter.fight_start == true {
             let skill = attacker_entity
                 .skill_uid_to_heal_skill
                 .entry(skill_uid)
@@ -176,7 +216,7 @@ pub fn process_aoi_sync_delta(
                 "heal packet: {attacker_uid} to {target_uid}: {actual_value} heal {} total heal",
                 skill.total_value
             );
-        } else {
+        } else if encounter.fight_start == true {
             let skill = attacker_entity
                 .skill_uid_to_dmg_skill
                 .entry(skill_uid)
@@ -223,32 +263,34 @@ pub fn process_aoi_sync_delta(
             skill.hits += 1;
             skill.total_value += actual_value;
             info!(
-                "dmg packet: {attacker_uid} to {target_uid}: {actual_value} dmg {} total dmg",
+                "dmg packet: {} to {target_uid}: {actual_value} dmg {} total dmg", _attacker_entity.name ,
                 skill.total_value
             );
         } 
     }
 
-    // Figure out timestamps
-    let timestamp_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis();
-    if encounter.time_fight_start_ms == Default::default() { 
-        encounter.time_fight_start_ms = timestamp_ms
-    }
-    if encounter.time_fight_start_ms_boss == Default::default() && boss {
+    if encounter.fight_start == true {
+        // Figure out timestamps
+        let timestamp_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        if encounter.time_fight_start_ms == Default::default() { 
+            encounter.time_fight_start_ms = timestamp_ms
+        }
+        if encounter.time_fight_start_ms_boss == Default::default() && boss {
             encounter.time_fight_start_ms_boss = timestamp_ms
+        }
+        if boss {
+            encounter.time_last_combat_packet_ms_boss = timestamp_ms;
+        }
+        encounter.time_last_combat_packet_ms = timestamp_ms;
     }
-    if boss {
-        encounter.time_last_combat_packet_ms_boss = timestamp_ms;
-    }
-    encounter.time_last_combat_packet_ms = timestamp_ms;
     
     Some(())
 }
 
-fn process_player_attrs(player_entity: &mut Entity, player_uid: i64, attrs: Vec<Attr>) {
+fn process_player_attrs(player_entity: &mut Entity, player_uid: i64, attrs: Vec<Attr>, _player_entity: &mut PlayerEntity) {
     for attr in attrs {
         let Some(mut raw_bytes) = attr.raw_data else {
             continue;
@@ -261,26 +303,30 @@ fn process_player_attrs(player_entity: &mut Entity, player_uid: i64, attrs: Vec<
                 raw_bytes.remove(0); // not sure why, there's some weird character as the first e.g. "\u{6}Sketal"
                 let player_name_result = BinaryReader::from(raw_bytes).read_string();
                 if let Ok(player_name) = player_name_result {
+                    _player_entity.name = player_name.clone();
                     player_entity.name = player_name;
-                    info! {"Found player {} with UID {}", player_entity.name, player_uid}
+                    info! {"Found player {} with UID {}", _player_entity.name, player_uid}
                 } else {
                     warn!("Failed to read player name for UID {}", player_uid);
                 }
             }
             #[allow(clippy::cast_possible_truncation)]
             attr_type::ATTR_PROFESSION_ID => {
-                player_entity.class_id =
-                    prost::encoding::decode_varint(&mut raw_bytes.as_slice()).unwrap() as i32
+                let class_id = prost::encoding::decode_varint(&mut raw_bytes.as_slice()).unwrap() as i32;
+                player_entity.class_id = class_id;
+                _player_entity.class_id = class_id;         
             }
             #[allow(clippy::cast_possible_truncation)]
             attr_type::ATTR_FIGHT_POINT => {
-                player_entity.ability_score =
-                    prost::encoding::decode_varint(&mut raw_bytes.as_slice()).unwrap() as i32
+                let ability_score = prost::encoding::decode_varint(&mut raw_bytes.as_slice()).unwrap() as i32;
+                player_entity.ability_score = ability_score;
+                _player_entity.ability_score = ability_score;    
             }
             #[allow(clippy::cast_possible_truncation)]
             attr_type::ATTR_LEVEL => {
-                player_entity.level =
-                    prost::encoding::decode_varint(&mut raw_bytes.as_slice()).unwrap() as i32
+                let lvl = prost::encoding::decode_varint(&mut raw_bytes.as_slice()).unwrap() as i32;
+                player_entity.level = lvl;
+                _player_entity.level = lvl;                    
             }
             _ => (),
         }

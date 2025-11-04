@@ -13,13 +13,25 @@ pub struct Encounter {
     pub total_heal: i64,
     pub local_player_uid: i64,
     pub entity_uid_to_entity: HashMap<i64, Entity>, // key: entity uid
+    pub entity_uid_to_player_entity: HashMap<i64, PlayerEntity>, // key: entity uid
     pub local_player: SyncContainerData,
     pub total_dmg_boss: i64,
     pub time_fight_start_ms_boss: u128,        // in ms
     pub time_last_combat_packet_ms_boss: u128, // in ms
+    pub fight_start: bool,
 }
 
 pub type EncounterMutex = Mutex<Encounter>;
+
+#[derive(Debug, Default, Clone)]
+pub struct PlayerEntity {
+    pub name: String,
+    pub entity_type: EEntityType,
+    pub class_id: i32,
+    pub class_spec: ClassSpec,
+    pub ability_score: i32,
+    pub level: i32,
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Entity {
